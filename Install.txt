@@ -1,0 +1,10 @@
+
+
+mkdir poll
+cd poll
+python -m venv myvenv
+venv\scripts\activate
+(venv)python -m pip install --upgrade pip
+(venv)python -m pip install -r requirements.txt
+(venv)python manage.py mirgate
+(venv)python manage.py runserver

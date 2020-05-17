@@ -1,0 +1,27 @@
+{% load staticfiles %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+    <ul class="nav nav-sidebar">
+
+        <li id="user-tools">
+                    {% if user.is_authenticated %}
+                        <a href="{% url 'logout' %}" title="Выйти">{{ user }}</a>
+                    {% else %}
+                        <a href="/accounts/login/?next=/">Войдите</a>
+                        <!--<a href="{% url 'login' %}">Войдите</a>-->
+
+                    {% endif %}
+                </li>
+
+        <li><a href="/redoc">redoc API</a></li>
+        <li><a href="/swagger">swagger API</a></li>
+
+    </ul>
+
+</body>
+</html>
