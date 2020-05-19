@@ -11,7 +11,7 @@ venv\scripts\activate
 (venv) python -m pip install -U pip setuptools
 (venv) pip install -U -r requirements.txt
 
-(venv)python manage.py mirgate
+(venv)python manage.py migrate
 (venv)python manage.py runserver
 ```
 #### Users for test:
