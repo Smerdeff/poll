@@ -11,9 +11,6 @@ router.register('answers', views.AnswerViewSet)
 router.register('answer_questions', views.AnswerQuestionViewSet)
 router.register('answer_options', views.AnswerOptionViewSet)
 
-
-
-
 urlpatterns = [
     url(r'^', include(router.urls)),
     url(r'^', include(router.urls)),
