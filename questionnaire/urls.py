@@ -13,7 +13,6 @@ router.register('answer_options', views.AnswerOptionViewSet)
 
 urlpatterns = [
     url(r'^', include(router.urls)),
-    url(r'^', include(router.urls)),
 ]
 
 
