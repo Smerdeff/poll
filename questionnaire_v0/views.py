@@ -257,20 +257,7 @@ def answer_detail(request, answer_pk):
 @permission_classes([IsAuthenticated])
 def answer_expand(request, answer_pk):
     """
-    GET answer by pk, or post answer_question with option
-    For example:
-    {
-       "question":1,
-       "text":"some text",
-       "answer_options":[
-          {
-             "option":1
-          },
-          {
-             "option":4
-          }
-       ]
-    }
+
     """
     if request.method == 'GET':
         try:
@@ -286,3 +273,34 @@ def answer_expand(request, answer_pk):
                 serializer.save()
                 return Response(serializer.data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+    # def validate(self, data):
+        # В данной редакции проверка не нужна
+        # # Если не админ, то может управлять только своими ответами на анкеты
+        # if not self.context['request'].user.is_staff and not AnswerQuestionnaire.objects.filter(
+        #         pk=data['answer_questionnaire'].pk,
+        #         user=self.context['request'].user).exists():
+        #     raise serializers.ValidationError(
+        #         "Not exists answer_questionnaire pk {0} for current user.".format(data['answer_questionnaire'].pk, ))
+        #
+        # # Проверка на целостность. Вопрос должен быть из анкеты
+        # if not Question.objects.filter(pk=data['question'].pk,
+        #                                questionnaire=data['answer_questionnaire'].questionnaire).exists():
+        #     raise serializers.ValidationError(
+        #         "Invalid question pk {0} for answer_questionnaire".format(data['question'].pk))
+        # if data['question_type'] != 0 and data.get('text'):
+        #     raise serializers.ValidationError("Question type not for text. Only Option.")
+
+        # return data
+
+
+
+            # inserted = AnswerQuestion.objects.filter(answer_questionnaire=answer_questionnaire.pk)
+            # option = Option.objects.filter(question__in = [item.question_id for item in inserted] )
+            #
+            # for item in inserted:
+            #     print(item.question_id)
+            # raise Exception(option)
+            # filter(question__questionnaire=answer_questionnaire.questionnaire)

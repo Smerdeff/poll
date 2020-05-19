@@ -1,8 +1,7 @@
-from django.utils.timezone import now
 from rest_framework import serializers
 # from .models import *
 from .models import *
-
+from django.db import transaction
 
 class OptionSerializer(serializers.ModelSerializer):
     def __init__(self, *args, **kwargs):
@@ -61,17 +60,31 @@ class QuestionnaireSerializer(serializers.ModelSerializer):
 class AnswerOptionSerializer(serializers.ModelSerializer):
     def __init__(self, *args, **kwargs):
         noparent = kwargs.pop('noparent', None)
-
         super(AnswerOptionSerializer, self).__init__(*args, **kwargs)
-
         if noparent:
             self.fields.pop('answer_question')
+
+    def validate(self, data):
+        if data['answer_question'].question_type == 0:
+            raise serializers.ValidationError("Question type not for Option. Only Text.")
+
+        if not AnswerQuestionnaire.objects.filter(pk=data['answer_question'].answer_questionnaire.pk, user=self.context['request'].user).exists():
+            raise serializers.ValidationError("No AnswerQuestionnaire pk {0} for this User".format(data['answer_question'].answer_questionnaire.pk))
+
+        if not Option.objects.filter(question=data['answer_question'].question.pk, pk=data['option'].pk).exists():
+            raise serializers.ValidationError("Invalid Option pk {0} for Question pk {1}".format(data['option'].pk,data['answer_question'].question.pk ))
+
+        if data['answer_question'].question_type == 1:
+            if AnswerOption.objects.filter(answer_question=data['answer_question'].pk).exists():
+                raise serializers.ValidationError("Question type for only 1 options")
+        return data
 
     class Meta:
         model = AnswerOption
         fields = ('pk', 'answer_question', 'option')
 
 
+# Общий Serializer для AnswerQuestion
 class AnswerQuestionSerializer(serializers.ModelSerializer):
     answer_options = AnswerOptionSerializer(many=True, noparent=True, read_only=True)
 
@@ -88,7 +101,28 @@ class AnswerQuestionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AnswerQuestion
-        fields = ('pk', 'question', 'text', 'answer_options', 'answer_questionnaire')
+        fields = ('pk', 'answer_questionnaire', 'question', 'text', 'question_type', 'answer_options')
+        read_only_fields = ('answer_questionnaire', 'question', 'question_type')
+        depth = 0
+
+
+# Serializer для AnswerQuestion для текста
+class AnswerQuestionTextSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AnswerQuestion
+        fields = ('pk', 'answer_questionnaire', 'question', 'text', 'question_type')
+        read_only_fields = ('answer_questionnaire', 'question', 'question_type')
+        depth = 0
+
+
+# Serializer для AnswerQuestion для выбора
+class AnswerQuestionOptionSerializer(serializers.ModelSerializer):
+    answer_options = AnswerOptionSerializer(many=True, noparent=True, read_only=True)
+
+    class Meta:
+        model = AnswerQuestion
+        fields = ('pk', 'answer_questionnaire', 'question', 'question_type', 'answer_options',)
+        read_only_fields = ('answer_questionnaire', 'question', 'question_type', 'text')
         depth = 0
 
 
@@ -98,11 +132,21 @@ class AnswerQuestionnaireSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         noexpand = kwargs.pop('noexpand', None)
-
         super(AnswerQuestionnaireSerializer, self).__init__(*args, **kwargs)
-
         if noexpand:
             self.fields.pop('answer_questions')
+
+    def create(self, validated_data):
+        with transaction.atomic():
+            answer_questionnaire = super(AnswerQuestionnaireSerializer, self).create(validated_data)
+            questions = Question.objects.filter(questionnaire=answer_questionnaire.questionnaire)
+            AnswerQuestion.objects.bulk_create([AnswerQuestion(answer_questionnaire=answer_questionnaire, question=question,
+                                                               question_type=question.question_type) for question in
+                                                questions])
+            AnswerOption.objects.bulk_create([AnswerOption(answer_questionnaire=answer_questionnaire, question=question,
+                                                           question_type=question.question_type) for question in
+                                              questions])
+        return answer_questionnaire
 
     class Meta:
         model = AnswerQuestionnaire
@@ -110,6 +154,7 @@ class AnswerQuestionnaireSerializer(serializers.ModelSerializer):
         depth = 0
 
 
+# Не используется в текущей редакции
 class AnswerPostSerializer(serializers.ModelSerializer):
     answer_options = AnswerOptionSerializer(many=True, noparent=True, default=[])
 

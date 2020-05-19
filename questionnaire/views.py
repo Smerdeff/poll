@@ -2,14 +2,11 @@ import datetime
 
 from django.utils.decorators import method_decorator
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import viewsets
-from rest_framework.decorators import permission_classes
+from rest_framework import viewsets, mixins
 from rest_framework.filters import OrderingFilter
-from rest_framework.pagination import LimitOffsetPagination
-from rest_framework.parsers import FileUploadParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
-from rest_framework.pagination import PageNumberPagination
+from rest_framework.viewsets import GenericViewSet
 
 from questionnaire import serializers
 from questionnaire.models import *
@@ -57,25 +54,25 @@ class NoPagingAutoSchema(NoTitleAutoSchema):
         return False
 
 
-#
-# class QuestionnairePagination(LimitOffsetPagination):
-#     default_limit = 5
-#     max_limit = 25
-#
-#
-# class StandardResultsSetPagination(PageNumberPagination):
-#     page_size = 100
-#     page_size_query_param = 'page_size'
-#     max_page_size = 1000
-
-
-
 @method_decorator(name='list', decorator=swagger_auto_schema(
-    operation_description="Get questionnaires list",
+    operation_description="Получить список анкет",
     filter_inspectors=[DjangoFilterDescriptionInspector], ))
 class QuestionnaireViewSet(viewsets.ModelViewSet):
     """
-    QuestionnaireViewSet
+    create:
+    Создать анкету
+
+    retrieve:
+    Получить анкету с вопросами и вариантами
+
+    update:
+    Изменить анкету
+
+    partial_update:
+    Изменить анкету
+
+    destroy:
+    Удалить анкету
     """
     queryset = Questionnaire.objects.all()
     serializer_class = serializers.QuestionnaireSerializer
@@ -86,7 +83,8 @@ class QuestionnaireViewSet(viewsets.ModelViewSet):
 
     swagger_schema = NoTitleAutoSchema
 
-    @swagger_auto_schema(auto_schema=NoPagingAutoSchema, filter_inspectors=[DjangoFilterDescriptionInspector])
+    @swagger_auto_schema(auto_schema=NoPagingAutoSchema, operation_description="Получить список активных анкет",
+                         filter_inspectors=[DjangoFilterDescriptionInspector])
     @action(detail=False, methods=['get'])
     def active(self, request):
         date = datetime.datetime.now()
@@ -105,29 +103,6 @@ class QuestionnaireViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True, noexpand=True)
         return Response(serializer.data)
 
-    # def list(self, request):
-    #     questionnaires = self.get_queryset()
-    #     serializer = self.serializer_class(questionnaires, many=True, noexpand=True)
-    #     return Response(serializer.data)
-
-    #
-    # @swagger_auto_schema(method='get', operation_description="image GET description override")
-    # @swagger_auto_schema(method='post', request_body=serializers.ImageUploadSerializer)
-    # @swagger_auto_schema(method='delete', manual_parameters=[openapi.Parameter(
-    #     name='delete_form_param', in_=openapi.IN_FORM,
-    #     type=openapi.TYPE_INTEGER,
-    #     description="this should not crash (form parameter on DELETE method)"
-    # )])
-    # @action(detail=True, methods=['get', 'post', 'delete'], parser_classes=(MultiPartParser, FileUploadParser))
-    # def image(self, request, slug=None):
-    #     """
-    #     image method docstring
-    #     """
-    #     pass
-
-    # def retrieve(self, request, pk=None):
-    #     pass
-
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'active'):
             permission_classes = [IsAuthenticated]
@@ -136,34 +111,24 @@ class QuestionnaireViewSet(viewsets.ModelViewSet):
         return [permission() for permission in permission_classes]
 
 
-        # @swagger_auto_schema(request_body=no_body, operation_id='no_body_test')
-        # def update(self, request, *args, **kwargs):
-        #     """update method docstring"""
-        #     return super(QuestionnaireViewSet, self).update(request, *args, **kwargs)
-
-        # @swagger_auto_schema(operation_description="partial_update description override", responses={404: 'slug not found'},
-        #                      operation_summary='partial_update summary', deprecated=True)
-        # def partial_update(self, request, *args, **kwargs):
-        #     """partial_update method docstring"""
-        #     return super(QuestionnaireViewSet, self).partial_update(request, *args, **kwargs)
-        #
-        # def update(self, request, *args, **kwargs):
-        #     """update method docstring"""
-        #     return super(QuestionnaireViewSet, self).partial_update(request, *args, **kwargs)
-        #
-        #
-        # def destroy(self, request, *args, **kwargs):
-        #     """destroy method docstring"""
-        #     return super(QuestionnaireViewSet, self).destroy(request, *args, **kwargs)
-        #
-        #
-
-
-@method_decorator(name='list', decorator=swagger_auto_schema(operation_description="Get questions list",
+@method_decorator(name='list', decorator=swagger_auto_schema(operation_description="Получить список вопросов",
                                                              filter_inspectors=[DjangoFilterDescriptionInspector], ))
 class QuestionViewSet(viewsets.ModelViewSet):
     """
-    Questions ViewSet
+        create:
+        Создать вопрос
+
+        retrieve:
+        Получить вопрос с вариантами
+
+        update:
+        Изменить вопрос
+
+        partial_update:
+        Изменить вопрос
+
+        destroy:
+        Удалить вопрос
     """
     queryset = Question.objects.all()
     serializer_class = serializers.QuestionSerializer
@@ -185,11 +150,6 @@ class QuestionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True, noexpand=True)
         return Response(serializer.data)
 
-    # def list(self, request):
-    #     questions = self.get_queryset()
-    #     serializer = self.serializer_class(questions, many=True, noexpand=True)
-    #     return Response(serializer.data)
-
     @swagger_auto_schema()
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'active'):
@@ -199,16 +159,29 @@ class QuestionViewSet(viewsets.ModelViewSet):
         return [permission() for permission in permission_classes]
 
 
-@method_decorator(name='list', decorator=swagger_auto_schema(operation_description="Get options list",
+@method_decorator(name='list', decorator=swagger_auto_schema(operation_description="Получить список вариантов",
                                                              filter_inspectors=[DjangoFilterDescriptionInspector], ))
 class OptionViewSet(viewsets.ModelViewSet):
     """
-    Options ViewSet
+        create:
+        Создать вариант
+
+        retrieve:
+        Получить вариант
+
+        update:
+        Изменить вариант
+
+        partial_update:
+        Изменить вариант
+
+        destroy:
+        Удалить вариант
     """
     queryset = Option.objects.all()
     serializer_class = serializers.OptionSerializer
     filter_backends = (DjangoFilterBackend, OrderingFilter)
-    filterset_fields = ('option',)
+    filterset_fields = ('question',)
     # ordering_fields = ('date_begin', 'date_end')
     # ordering = ('date_begin',)
 
@@ -223,21 +196,39 @@ class OptionViewSet(viewsets.ModelViewSet):
         return [permission() for permission in permission_classes]
 
 
-@method_decorator(name='list', decorator=swagger_auto_schema(operation_description="Get answer questionnaires list",
+@method_decorator(name='list', decorator=swagger_auto_schema(operation_description="Список пройденных анкет",
                                                              filter_inspectors=[DjangoFilterDescriptionInspector], ))
-class AnswerViewSet(viewsets.ModelViewSet):
+class AnswerViewSet(mixins.CreateModelMixin,
+                    mixins.RetrieveModelMixin,
+                    # mixins.UpdateModelMixin,
+                    mixins.DestroyModelMixin,
+                    mixins.ListModelMixin,
+                    GenericViewSet):
     """
-    Answer ViewSet
+        create:
+        Создать пройденную анкету со всем вопросами
+
+        retrieve:
+        Получить пройденную анкету
+
+        destroy:
+        Удалить пройденную анкету
     """
-    # raise Exception(permission_classes)
+
     queryset = AnswerQuestionnaire.objects.all()
     serializer_class = serializers.AnswerQuestionnaireSerializer
     filter_backends = (DjangoFilterBackend, OrderingFilter)
-    filterset_fields = ('questionnaire',)
+    filterset_fields = ('questionnaire', 'user')
     ordering_fields = ('created_at')
     ordering = ('created_at',)
 
     swagger_schema = NoTitleAutoSchema
+
+    def get_queryset(self):
+        queryset = self.queryset
+        if not self.request.user.is_staff:  # Не админ видит только свои пройденные анкеты
+            queryset = queryset.filter(user=self.request.user)
+        return queryset
 
     def list(self, request):
         queryset = self.filter_queryset(self.get_queryset())
@@ -252,19 +243,28 @@ class AnswerViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema()
     def get_permissions(self):
-        if self.action in ('list', 'retrieve', 'create'):
-            permission_classes = [IsAuthenticated]
-        else:
-            permission_classes = [IsAdminUser]
+        permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]
 
 
-@method_decorator(name='list', decorator=swagger_auto_schema(operation_description="Get answer questions list",
-                                                             filter_inspectors=[DjangoFilterDescriptionInspector], ))
-class AnswerQuestionViewSet(viewsets.ModelViewSet):
+@method_decorator(name='list',
+                  decorator=swagger_auto_schema(operation_description="Получить список вопросов в пройденых анкетах",
+                                                filter_inspectors=[DjangoFilterDescriptionInspector], ))
+class AnswerQuestionViewSet(mixins.RetrieveModelMixin,
+                            mixins.UpdateModelMixin,
+                            mixins.ListModelMixin,
+                            GenericViewSet):
     """
-    AnswerQuestion ViewSet
+        retrieve:
+        Получить вопрос
+
+        partial_update:
+        Изменить вопрос
+
+        partial_update:
+        Изменить вопрос
     """
+
     queryset = AnswerQuestion.objects.all()
     serializer_class = serializers.AnswerQuestionSerializer
     filter_backends = (DjangoFilterBackend, OrderingFilter)
@@ -274,34 +274,79 @@ class AnswerQuestionViewSet(viewsets.ModelViewSet):
 
     swagger_schema = NoTitleAutoSchema
 
+    def get_queryset(self):
+        queryset = self.queryset
+        if not self.request.user.is_staff:  # Не админ видит только свои данные
+            queryset = queryset.filter(answer_questionnaire__user=self.request.user)
+        return queryset
+
+    def retrieve(self, request, pk):
+        answer_question = self.get_queryset().get(pk=pk)
+        if answer_question.question_type == 0:
+            serializer = serializers.AnswerQuestionTextSerializer(answer_question, many=False)
+        else:
+            serializer = serializers.AnswerQuestionOptionSerializer(answer_question, many=False)
+        # serializer = self.serializer_class(answer_question, many=False)
+        return Response(serializer.data)
+
+    def update(self, request, pk, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        print(request.data, pk)
+        if self.get_queryset().get(pk=pk).question_type == 0:
+            serializer = serializers.AnswerQuestionTextSerializer(instance, data=request.data, partial=partial)
+        else:
+            serializer = serializers.AnswerQuestionOptionSerializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        if getattr(instance, '_prefetched_objects_cache', None):
+            # If 'prefetch_related' has been applied to a queryset, we need to
+            # forcibly invalidate the prefetch cache on the instance.
+            instance._prefetched_objects_cache = {}
+
+        return Response(serializer.data)
+
     @swagger_auto_schema()
     def get_permissions(self):
-        if self.action in ('list', 'retrieve', 'create'):
-            permission_classes = [IsAuthenticated]
-        else:
-            permission_classes = [IsAdminUser]
+        permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]
 
 
-@method_decorator(name='list', decorator=swagger_auto_schema(operation_description="Get answer options list",
+@method_decorator(name='list', decorator=swagger_auto_schema(operation_description="Список вариантов в ответе",
                                                              filter_inspectors=[DjangoFilterDescriptionInspector], ))
-class AnswerOptionViewSet(viewsets.ModelViewSet):
+class AnswerOptionViewSet(mixins.CreateModelMixin,
+                          mixins.RetrieveModelMixin,
+                          # mixins.UpdateModelMixin,
+                          mixins.DestroyModelMixin,
+                          mixins.ListModelMixin,
+                          GenericViewSet):
     """
-    AnswerOption ViewSet
+        create:
+        Добавить вариант в ответ
+
+        retrieve:
+        Получить вариант в ответе
+
+        destroy:
+        Удалить вариант в ответе
     """
     queryset = AnswerOption.objects.all()
     serializer_class = serializers.AnswerOptionSerializer
     filter_backends = (DjangoFilterBackend, OrderingFilter)
-    # filterset_fields = ('answer_questionnaire',)
+    filterset_fields = ('answer_question',)
     # ordering_fields = ('created_at')
     # ordering = ('created_at',)
 
     swagger_schema = NoTitleAutoSchema
 
+    def get_queryset(self):
+        queryset = self.queryset
+        if not self.request.user.is_staff:  # Не админ видит только свои данные
+            queryset = queryset.filter(answer_question__answer_questionnaire__user=self.request.user)
+        return queryset
+
     @swagger_auto_schema()
     def get_permissions(self):
-        # if self.action in ('list', 'retrieve', 'create' ):
-        #     permission_classes = [IsAuthenticated]
-        # else:
-        permission_classes = [IsAdminUser]
+        permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]
