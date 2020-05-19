@@ -4,9 +4,9 @@ Django rest framework some
 ### Install:
 Windows
 ```
-git https://github.com/smerdeff/poll.git
+git clone https://github.com/smerdeff/poll.git
 cd poll
-python -m venv myvenv
+python -m venv venv
 venv\scripts\activate
 (venv) python -m pip install -U pip setuptools
 (venv) pip install -U -r requirements.txt
