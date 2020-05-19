@@ -1,288 +1,352 @@
-# from django.utils.datetime_safe import datetime
 import datetime
-from rest_framework.authentication import SessionAuthentication, BasicAuthentication
-from rest_framework.permissions import IsAuthenticated
+
+from django.utils.decorators import method_decorator
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import viewsets, mixins
+from rest_framework.filters import OrderingFilter
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
-from rest_framework import status
+from rest_framework.viewsets import GenericViewSet
 
-from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-# from .models import *
-from .serializers import *
+from questionnaire import serializers
+from questionnaire.models import *
+from drf_yasg import openapi
+from drf_yasg.app_settings import swagger_settings
+from drf_yasg.inspectors import CoreAPICompatInspector, FieldInspector, NotHandled, SwaggerAutoSchema
+from drf_yasg.utils import no_body, swagger_auto_schema
+from rest_framework.decorators import action
 
 
-@api_view(['GET', 'POST'])
-@authentication_classes([SessionAuthentication, BasicAuthentication])
-@permission_classes([IsAuthenticated])
-def questionnaires_list(request):
+class DjangoFilterDescriptionInspector(CoreAPICompatInspector):
+    def get_filter_parameters(self, filter_backend):
+        if isinstance(filter_backend, DjangoFilterBackend):
+            result = super(DjangoFilterDescriptionInspector, self).get_filter_parameters(filter_backend)
+            for param in result:
+                if not param.get('description', ''):
+                    param.description = "Filter the returned list by {field_name}".format(field_name=param.name)
+
+            return result
+
+        return NotHandled
+
+
+class NoSchemaTitleInspector(FieldInspector):
+    def process_result(self, result, method_name, obj, **kwargs):
+        # remove the `title` attribute of all Schema objects
+        if isinstance(result, openapi.Schema.OR_REF):
+            # traverse any references and alter the Schema object in place
+            schema = openapi.resolve_ref(result, self.components)
+            schema.pop('title', None)
+
+            # no ``return schema`` here, because it would mean we always generate
+            # an inline `object` instead of a definition reference
+
+        # return back the same object that we got - i.e. a reference if we got a reference
+        return result
+
+
+class NoTitleAutoSchema(SwaggerAutoSchema):
+    field_inspectors = [NoSchemaTitleInspector] + swagger_settings.DEFAULT_FIELD_INSPECTORS
+
+
+class NoPagingAutoSchema(NoTitleAutoSchema):
+    def should_page(self):
+        return False
+
+
+@method_decorator(name='list', decorator=swagger_auto_schema(
+    operation_description="Получить список анкет",
+    filter_inspectors=[DjangoFilterDescriptionInspector], ))
+class QuestionnaireViewSet(viewsets.ModelViewSet):
     """
-    List questionnaire, or create a new questionnaire.
+    create:
+    Создать анкету
+
+    retrieve:
+    Получить анкету с вопросами и вариантами
+
+    update:
+    Изменить анкету
+
+    partial_update:
+    Изменить анкету
+
+    destroy:
+    Удалить анкету
     """
-    if request.method == 'GET':
-        nextPage = 1
-        previousPage = 1
+    queryset = Questionnaire.objects.all()
+    serializer_class = serializers.QuestionnaireSerializer
+    filter_backends = (DjangoFilterBackend, OrderingFilter)
+    filterset_fields = ('name',)
+    ordering_fields = ('date_begin', 'date_end')
+    ordering = ('date_begin',)
 
-        active = request.GET.get('active', False)
+    swagger_schema = NoTitleAutoSchema
 
-        if active:
-            date = datetime.datetime.utcnow()
-            questionnaires = Questionnaire.objects.filter(date_begin__lte=date,date_end__gte=date)  # Активные анкеты только
+    @swagger_auto_schema(auto_schema=NoPagingAutoSchema, operation_description="Получить список активных анкет",
+                         filter_inspectors=[DjangoFilterDescriptionInspector])
+    @action(detail=False, methods=['get'])
+    def active(self, request):
+        date = datetime.datetime.now()
+        questionnaires = self.get_queryset().filter(date_end__gte=date).all()
+        serializer = self.serializer_class(questionnaires, many=True)
+        return Response(serializer.data)
+
+    def list(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True, noexpand=True)
+        return Response(serializer.data)
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'active'):
+            permission_classes = [IsAuthenticated]
         else:
-            questionnaires = Questionnaire.objects.all()
+            permission_classes = [IsAdminUser]
+        return [permission() for permission in permission_classes]
 
-        page = request.GET.get('page', 1)
-        paginator = Paginator(questionnaires, 10)
-        try:
-            data = paginator.page(page)
-        except PageNotAnInteger:
-            data = paginator.page(1)
-        except EmptyPage:
-            data = paginator.page(paginator.num_pages)
 
-        serializer = QuestionnaireSerializer(data, context={'request': request}, many=True, noexpand=True)
-        if data.has_next():
-            nextPage = data.next_page_number()
-        if data.has_previous():
-            previousPage = data.previous_page_number()
-
-        return Response({'data': serializer.data , 'count': paginator.count, 'numpages' : paginator.num_pages, 'nextlink': 'page=' + str(nextPage), 'prevlink': 'page=' + str(previousPage)})
-
-    elif request.method == 'POST':
-        serializer = QuestionnaireSerializer(data=request.data, context={'request': request}, noexpand=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['GET', 'PUT', 'DELETE'])
-@authentication_classes([SessionAuthentication, BasicAuthentication])
-@permission_classes([IsAuthenticated])
-def questionnaire_detail(request, questionnaire_pk):
+@method_decorator(name='list', decorator=swagger_auto_schema(operation_description="Получить список вопросов",
+                                                             filter_inspectors=[DjangoFilterDescriptionInspector], ))
+class QuestionViewSet(viewsets.ModelViewSet):
     """
-    Retrieve, update or delete a questionnaire by pk.
-    """
-    try:
-        questionnaire = Questionnaire.objects.get(pk=questionnaire_pk)
-    except Questionnaire.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        create:
+        Создать вопрос
 
-    if request.method == 'GET':
-        serializer = QuestionnaireSerializer(questionnaire, context={'request': request},  noexpand=True)
+        retrieve:
+        Получить вопрос с вариантами
+
+        update:
+        Изменить вопрос
+
+        partial_update:
+        Изменить вопрос
+
+        destroy:
+        Удалить вопрос
+    """
+    queryset = Question.objects.all()
+    serializer_class = serializers.QuestionSerializer
+    filter_backends = (DjangoFilterBackend, OrderingFilter)
+    filterset_fields = ('name', 'questionnaire')
+    # ordering_fields = ('date_begin', 'date_end')
+    # ordering = ('date_begin',)
+
+    swagger_schema = NoTitleAutoSchema
+
+    def list(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True, noexpand=True)
         return Response(serializer.data)
 
-    elif request.method == 'PUT':
-        serializer = QuestionnaireSerializer(questionnaire, data=request.data, context={'request': request}, noexpand=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    @swagger_auto_schema()
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'active'):
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAdminUser]
+        return [permission() for permission in permission_classes]
 
-    elif request.method == 'DELETE':
-        questionnaire.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
 
-@api_view(['GET'])
-@authentication_classes([SessionAuthentication, BasicAuthentication])
-@permission_classes([IsAuthenticated])
-def questionnaires_expand(request, questionnaire_pk):
+@method_decorator(name='list', decorator=swagger_auto_schema(operation_description="Получить список вариантов",
+                                                             filter_inspectors=[DjangoFilterDescriptionInspector], ))
+class OptionViewSet(viewsets.ModelViewSet):
     """
-    List questions by questionnaire_pk
-    """
-    try:
-        questionnaire = Questionnaire.objects.get(pk=questionnaire_pk)
-    except Questionnaire.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        create:
+        Создать вариант
 
-    if request.method == 'GET':
-        serializer = QuestionnaireSerializer(questionnaire, context={'request': request})
+        retrieve:
+        Получить вариант
+
+        update:
+        Изменить вариант
+
+        partial_update:
+        Изменить вариант
+
+        destroy:
+        Удалить вариант
+    """
+    queryset = Option.objects.all()
+    serializer_class = serializers.OptionSerializer
+    filter_backends = (DjangoFilterBackend, OrderingFilter)
+    filterset_fields = ('question',)
+    # ordering_fields = ('date_begin', 'date_end')
+    # ordering = ('date_begin',)
+
+    swagger_schema = NoTitleAutoSchema
+
+    @swagger_auto_schema()
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAdminUser]
+        return [permission() for permission in permission_classes]
+
+
+@method_decorator(name='list', decorator=swagger_auto_schema(operation_description="Список пройденных анкет",
+                                                             filter_inspectors=[DjangoFilterDescriptionInspector], ))
+class AnswerViewSet(mixins.CreateModelMixin,
+                    mixins.RetrieveModelMixin,
+                    # mixins.UpdateModelMixin,
+                    mixins.DestroyModelMixin,
+                    mixins.ListModelMixin,
+                    GenericViewSet):
+    """
+        create:
+        Создать пройденную анкету со всем вопросами и вариантами
+
+        retrieve:
+        Получить пройденную анкету
+
+        destroy:
+        Удалить пройденную анкету
+    """
+
+    queryset = AnswerQuestionnaire.objects.all()
+    serializer_class = serializers.AnswerQuestionnaireSerializer
+    filter_backends = (DjangoFilterBackend, OrderingFilter)
+    filterset_fields = ('questionnaire', 'user')
+    ordering_fields = ('created_at')
+    ordering = ('created_at',)
+
+    swagger_schema = NoTitleAutoSchema
+
+    def get_queryset(self):
+        queryset = self.queryset
+        if not self.request.user.is_staff:  # Не админ видит только свои пройденные анкеты
+            queryset = queryset.filter(user=self.request.user)
+        return queryset
+
+    def list(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True, noexpand=True)
         return Response(serializer.data)
 
+    @swagger_auto_schema()
+    def get_permissions(self):
+        permission_classes = [IsAuthenticated]
+        return [permission() for permission in permission_classes]
 
-@api_view(['GET', 'POST'])
-@authentication_classes([SessionAuthentication, BasicAuthentication])
-@permission_classes([IsAuthenticated])
-def questions_list(request):
+
+@method_decorator(name='list',
+                  decorator=swagger_auto_schema(operation_description="Получить список вопросов в пройденых анкетах",
+                                                filter_inspectors=[DjangoFilterDescriptionInspector], ))
+class AnswerQuestionViewSet(mixins.RetrieveModelMixin,
+                            mixins.UpdateModelMixin,
+                            mixins.ListModelMixin,
+                            GenericViewSet):
     """
-    List all questions, Create a new question.
+        retrieve:
+        Получить вопрос
+
+        partial_update:
+        Изменить вопрос
+
+        partial_update:
+        Изменить вопрос
     """
-    if request.method == 'GET':
-        data = Question.objects.all()
-        serializer = QuestionSerializer(data, context={'request': request}, many=True, noexpand=True)
-        return Response({'data': serializer.data})
 
-    if request.method == 'POST':
-        serializer = QuestionSerializer(data=request.data, noexpand=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    queryset = AnswerQuestion.objects.all()
+    serializer_class = serializers.AnswerQuestionSerializer
+    filter_backends = (DjangoFilterBackend, OrderingFilter)
+    filterset_fields = ('answer_questionnaire',)
+    # ordering_fields = ('created_at')
+    # ordering = ('created_at',)
 
+    swagger_schema = NoTitleAutoSchema
 
-@api_view(['GET', 'PUT', 'DELETE'])
-@authentication_classes([SessionAuthentication, BasicAuthentication])
-@permission_classes([IsAuthenticated])
-def question_detail(request, question_pk):
-    """
-        Retrieve, update or delete a question by pk.
-    """
-    try:
-        question=Question.objects.get(pk=question_pk)
-    except Question.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+    def get_queryset(self):
+        queryset = self.queryset
+        if not self.request.user.is_staff:  # Не админ видит только свои данные
+            queryset = queryset.filter(answer_questionnaire__user=self.request.user)
+        return queryset
 
-    # raise Exception(question)
-    if request.method == 'GET':
-        serializer = QuestionSerializer(question, context={'request': request}, noexpand=True)
+    def retrieve(self, request, pk):
+        answer_question = self.get_queryset().get(pk=pk)
+        if answer_question.question_type == 0:
+            serializer = serializers.AnswerQuestionTextSerializer(answer_question, many=False)
+        else:
+            serializer = serializers.AnswerQuestionOptionSerializer(answer_question, many=False)
+        # serializer = self.serializer_class(answer_question, many=False)
         return Response(serializer.data)
 
-    elif request.method == 'PUT':
-        serializer = QuestionSerializer(question, data=request.data, context={'request': request}, noexpand=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def update(self, request, pk, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        print(request.data, pk)
+        if self.get_queryset().get(pk=pk).question_type == 0:
+            serializer = serializers.AnswerQuestionTextSerializer(instance, data=request.data, partial=partial)
+        else:
+            serializer = serializers.AnswerQuestionOptionSerializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
 
-    elif request.method == 'DELETE':
-        question.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        if getattr(instance, '_prefetched_objects_cache', None):
+            # If 'prefetch_related' has been applied to a queryset, we need to
+            # forcibly invalidate the prefetch cache on the instance.
+            instance._prefetched_objects_cache = {}
 
-
-@api_view(['GET'])
-@authentication_classes([SessionAuthentication, BasicAuthentication])
-@permission_classes([IsAuthenticated])
-def questions_expand(request, question_pk):
-    """
-    List answer_options by question_pk
-    """
-    try:
-        question = Question.objects.get(pk=question_pk)
-    except Question.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
-
-        # raise Exception(question)
-    if request.method == 'GET':
-        serializer = QuestionSerializer(question, context={'request': request})
         return Response(serializer.data)
 
+    @swagger_auto_schema()
+    def get_permissions(self):
+        permission_classes = [IsAuthenticated]
+        return [permission() for permission in permission_classes]
 
-@api_view(['GET', 'POST'])
-@authentication_classes([SessionAuthentication, BasicAuthentication])
-@permission_classes([IsAuthenticated])
-def options_list(request):
+
+@method_decorator(name='list', decorator=swagger_auto_schema(operation_description="Список вариантов в ответе",
+                                                             filter_inspectors=[DjangoFilterDescriptionInspector], ))
+class AnswerOptionViewSet(mixins.CreateModelMixin,
+                          mixins.RetrieveModelMixin,
+                          # mixins.UpdateModelMixin,
+                          mixins.DestroyModelMixin,
+                          mixins.ListModelMixin,
+                          GenericViewSet):
     """
-    List all options, Create a new options.
+        create:
+        Добавить вариант в ответ
+
+        retrieve:
+        Получить вариант в ответе
+
+        destroy:
+        Удалить вариант в ответе
     """
-    if request.method == 'GET':
-        data = Option.objects.all()
-        serializer = OptionSerializer(data, context={'request': request}, many=True)
-        return Response({'data': serializer.data})
+    queryset = AnswerOption.objects.all()
+    serializer_class = serializers.AnswerOptionSerializer
+    filter_backends = (DjangoFilterBackend, OrderingFilter)
+    filterset_fields = ('answer_question',)
+    # ordering_fields = ('created_at')
+    # ordering = ('created_at',)
 
-    if request.method == 'POST':
-        serializer = OptionSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    swagger_schema = NoTitleAutoSchema
 
+    def get_queryset(self):
+        queryset = self.queryset
+        if not self.request.user.is_staff:  # Не админ видит только свои данные
+            queryset = queryset.filter(answer_question__answer_questionnaire__user=self.request.user)
+        return queryset
 
-@api_view(['GET', 'PUT', 'DELETE'])
-@authentication_classes([SessionAuthentication, BasicAuthentication])
-@permission_classes([IsAuthenticated])
-def option_detail(request, option_pk):
-    """
-    Retrieve, update or delete a options_detail by pk.
-    """
-    try:
-        answer_options = Option.objects.get(pk=option_pk)
-    except Option.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
-
-    if request.method == 'GET':
-        serializer = OptionSerializer(answer_options, context={'request': request})
-        return Response(serializer.data)
-
-    elif request.method == 'PUT':
-        serializer = OptionSerializer(answer_options, data=request.data, context={'request': request})
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    elif request.method == 'DELETE':
-        answer_options.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-@api_view(['GET', 'POST'])
-@authentication_classes([SessionAuthentication, BasicAuthentication])
-@permission_classes([IsAuthenticated])
-def answers_list(request):
-    """
-        List answer, or create a new answer.
-    """
-    if request.method == 'GET':
-        data = AnswerQuestionnaire.objects.filter(user=request.user)
-        serializer = AnswerQuestionnaireSerializer(data, context={'request': request}, many=True, noexpand=True)
-        return Response({'data': serializer.data})
-
-    elif request.method == 'POST':
-        serializer = AnswerQuestionnaireSerializer(data=request.data, context = {'request': request}, noexpand=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['GET', 'DELETE'])
-@authentication_classes([SessionAuthentication, BasicAuthentication])
-@permission_classes([IsAuthenticated])
-def answer_detail(request, answer_pk):
-    """
-    Retrieve or delete a answer by pk.
-    """
-    try:
-        answer = AnswerQuestionnaire.objects.get(pk=answer_pk)
-    except AnswerQuestionnaire.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
-
-    if request.method == 'GET':
-        serializer = AnswerQuestionnaireSerializer(answer, context={'request': request}, noexpand=True)
-        return Response({'data': serializer.data})
-
-    elif request.method == 'DELETE':
-        answer.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-@api_view(['GET', 'POST'])
-@authentication_classes([SessionAuthentication, BasicAuthentication])
-@permission_classes([IsAuthenticated])
-def answer_expand(request, answer_pk):
-    """
-    GET answer by pk, or post answer_question with option
-    For example:
-    {
-       "question":1,
-       "text":"some text",
-       "answer_options":[
-          {
-             "option":1
-          },
-          {
-             "option":4
-          }
-       ]
-    }
-    """
-    if request.method == 'GET':
-        try:
-            answer = AnswerQuestionnaire.objects.get(pk=answer_pk)
-        except AnswerQuestionnaire.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        serializer = AnswerQuestionnaireSerializer(answer, context={'request': request})
-        return Response({'data': serializer.data})
-
-    elif request.method == 'POST':
-            serializer = AnswerPostSerializer(data=request.data, context={'request': request, 'answer_pk':answer_pk})
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    @swagger_auto_schema()
+    def get_permissions(self):
+        permission_classes = [IsAuthenticated]
+        return [permission() for permission in permission_classes]

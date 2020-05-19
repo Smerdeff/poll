@@ -22,6 +22,8 @@ from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 
+# from rest_framework.schemas.openapi import AutoSchema
+
 from poll import views
 
 schema_view = get_schema_view(
@@ -43,8 +45,10 @@ urlpatterns = [
     url(r'^redoc/$', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 
     path('admin/', admin.site.urls),
+    path('admin/doc/', include('django.contrib.admindocs.urls')),
+
     url(r'^$', views.home, name='home'),
-    url(r'^api/v0/', include('questionnaire.urls')),
+    url(r'^api/v1/', include('questionnaire.urls')),
 
     # path('accounts/login/', LoginView.as_view(template_name='login.html'), name="login", kwargs={'next_page': '/'}),
     # path("accounts/logout/", LogoutView.as_view(), name="logout", kwargs={'next_page': '/'}),

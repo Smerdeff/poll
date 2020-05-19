@@ -1,10 +1,10 @@
 
-
-mkdir poll
+git https://github.com/smerdeff/poll.git
 cd poll
 python -m venv myvenv
 venv\scripts\activate
-(venv)python -m pip install --upgrade pip
-(venv)python -m pip install -r requirements.txt
+(venv) python -m pip install -U pip setuptools
+(venv) pip install -U -r requirements.txt
+
 (venv)python manage.py mirgate
 (venv)python manage.py runserver
