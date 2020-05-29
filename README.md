@@ -22,10 +22,10 @@ venv\scripts\activate
 ##### OpenAPI swagger: https://app.swaggerhub.com/apis-docs/smerdeff/poll/v1
 
 #### Local API (after run project):
-##### Local swagger: http://localhost:8000/swagger/
-##### Local redoc http://localhost:8000/redoc/
+##### Local swagger: http://127.0.0.1:8000/swagger/
+##### Local redoc http://127.0.0.1:8000/redoc/
 
-#### Prepatch for api http://localhost:8000/api/v1/ ~API
+#### Prepatch for api http://127.0.0.1:8000/api/v1/ ~API
 
 
 
