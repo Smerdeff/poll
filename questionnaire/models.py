@@ -3,7 +3,9 @@ from django.contrib.auth.models import User
 
 
 # Create your models here.
-
+QT_TEXT = 0
+QT_CHOICES = 1
+QT_MULTI_CHOICES = 2
 
 class Questionnaire(models.Model):
     """
@@ -29,7 +31,7 @@ class Question(models.Model):
     questionnaire = models.ForeignKey(Questionnaire, related_name='questions', help_text='Анкета',
                                       on_delete=models.CASCADE)
     name = models.CharField(max_length=512, help_text='Текст вопроса')
-    question_type = models.IntegerField(choices=((0, 'Text'), (1, 'Choices'), (2, 'Multi choices')),  help_text='Тип вопроса')
+    question_type = models.IntegerField(choices=((QT_TEXT, 'Text'), (QT_CHOICES, 'Choices'), (QT_MULTI_CHOICES, 'Multi choices')), help_text='Тип вопроса')
 
     def __str__(self):
         return self.questionnaire.__str__() + '/' + self.name.__str__()

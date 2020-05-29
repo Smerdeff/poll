@@ -13,7 +13,7 @@ class OptionSerializer(serializers.ModelSerializer):
             self.fields.pop('question')
 
     def validate(self, data):
-        if data['question'].question_type == 0:
+        if data['question'].question_type == QT_TEXT:
             raise serializers.ValidationError("Question type not for options. Only text.")
 
         return data
@@ -65,7 +65,7 @@ class AnswerOptionSerializer(serializers.ModelSerializer):
             self.fields.pop('answer_question')
 
     def validate(self, data):
-        if data['answer_question'].question_type == 0:
+        if data['answer_question'].question_type == QT_TEXT:
             raise serializers.ValidationError("Question type not for Option. Only Text.")
 
         if not AnswerQuestionnaire.objects.filter(pk=data['answer_question'].answer_questionnaire.pk, user=self.context['request'].user).exists():
@@ -74,7 +74,7 @@ class AnswerOptionSerializer(serializers.ModelSerializer):
         if not Option.objects.filter(question=data['answer_question'].question.pk, pk=data['option'].pk).exists():
             raise serializers.ValidationError("Invalid Option pk {0} for Question pk {1}".format(data['option'].pk,data['answer_question'].question.pk ))
 
-        if data['answer_question'].question_type == 1:
+        if data['answer_question'].question_type == QT_CHOICES:
             if AnswerOption.objects.filter(answer_question=data['answer_question'].pk).exists():
                 raise serializers.ValidationError("Question type for only 1 options")
         return data
@@ -103,7 +103,6 @@ class AnswerQuestionSerializer(serializers.ModelSerializer):
         model = AnswerQuestion
         fields = ('pk', 'answer_questionnaire', 'question', 'text', 'question_type', 'answer_options')
         read_only_fields = ('answer_questionnaire', 'question', 'question_type')
-        depth = 0
 
 
 # Serializer для AnswerQuestion для текста
@@ -112,7 +111,6 @@ class AnswerQuestionTextSerializer(serializers.ModelSerializer):
         model = AnswerQuestion
         fields = ('pk', 'answer_questionnaire', 'question', 'text', 'question_type')
         read_only_fields = ('answer_questionnaire', 'question', 'question_type')
-        depth = 0
 
 
 # Serializer для AnswerQuestion для выбора
@@ -123,7 +121,7 @@ class AnswerQuestionOptionSerializer(serializers.ModelSerializer):
         model = AnswerQuestion
         fields = ('pk', 'answer_questionnaire', 'question', 'question_type', 'answer_options',)
         read_only_fields = ('answer_questionnaire', 'question', 'question_type', 'text')
-        depth = 0
+
 
 
 class AnswerQuestionnaireSerializer(serializers.ModelSerializer):
@@ -151,7 +149,6 @@ class AnswerQuestionnaireSerializer(serializers.ModelSerializer):
     class Meta:
         model = AnswerQuestionnaire
         fields = ('pk', 'questionnaire', 'created_at', 'user', 'answer_questions')
-        depth = 0
 
 
 # Не используется в текущей редакции
@@ -187,10 +184,10 @@ class AnswerPostSerializer(serializers.ModelSerializer):
         return answer_question
 
     def validate(self, data):
-        if data['question'].question_type != 0 and data.get('text'):
+        if data['question'].question_type != QT_TEXT and data.get('text'):
             raise serializers.ValidationError("Question type not for text. Only Option.")
 
-        if data['question'].question_type == 0 and len(data.get('answer_options')) > 0:
+        if data['question'].question_type == QT_TEXT and len(data.get('answer_options')) > 0:
             raise serializers.ValidationError("Question type not for options. Only text.")
 
         if data['question'].question_type == 1 and len(data.get('answer_options')) > 1:
