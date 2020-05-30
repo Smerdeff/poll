@@ -1,5 +1,5 @@
 # Poll
-Django rest framework some
+Django REST framework example with OpenAPI documentation
 
 ### Install:
 Windows
